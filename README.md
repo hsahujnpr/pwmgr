@@ -117,7 +117,7 @@ test-site test-user test-username test-password
 hdfcbank self myusername mypassword
 hdfcbank mom mom-username mom-password
 gmail self me@gmail mypassword@gmail
-gmail mom mom@gmail mompasswrod@gmail
+gmail mom mom@gmail mompassword@gmail
 ```
 
 #### Populating CredentialStore
@@ -160,15 +160,12 @@ Note: The `<encrypted-password>` placeholder represents the password encrypted u
 Each command provides meaningful error messages if the operation fails. For example:
 - Attempting to retrieve credentials for a non-existent site or user will return:
   ```plaintext
-  Error: Site or user not found.
+  No Credentials exist for Site: wrong-site User: wrong-user
   ```
-- Attempting to delete credentials for a non-existent site or user will return:
+- Attempting to add credentials for an user on existing site will return:
   ```plaintext
-  Error: Site or user not found.
+  Credentials exist for Site: site User: user - Use 'Update' instead
   ```
-
-### Future Work
-- Prompt to enter new password twice, to avoid mistyping
 
 ### Future Work
 1. Prompt to enter new password twice, to avoid mistyping
