@@ -1,0 +1,17 @@
+/target
+/pwmgr.readme.old
+/data/backup/*
+
+# IDE/Editor files
+.vscode/
+.idea/
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Rust analyzer files
+.rust-analyzer/
+
+# Other backup files
+/data/*.bak
