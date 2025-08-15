@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use std::fs;
 use pwmgr::structs::Credential;
 use rpassword;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 //use log::{debug, info, warn};
 
 #[derive(Parser)]
@@ -17,12 +18,17 @@ pub struct Cli {
     #[arg(short, long, value_name="DB_FILE_NAME")]
     db_file_name: String,
 
+    //Specify the name of master password hash file name
+    #[arg(short, long, value_name="MASTER_KEY_HASH_FILE_NAME")]
+    master_key_hash_file_name: String,
+
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    SetMasterPassword {},
     Add    {site: String, user: String, username: String},
     Get    {site: String, user: String},
     Update {site: String, user: String, username: String},
@@ -34,11 +40,22 @@ fn main() {
     println!("Welcome to Credential manager!");
     println!("==============================");
 
+    let args = Cli::parse();
+
     //Get master password
-    let master_password = 
+    let input_master_password = 
         rpassword::prompt_password("Enter Master Password:").unwrap();
 
-    let master_key = match pwmgr::derive_master_key(&master_password){
+    let encoded_master_key = fs::read_to_string(
+        &args.master_key_hash_file_name).unwrap();
+
+    //println!("Read master key hash: {}", encoded_master_key);
+
+    //TODO Handle error instead of unwrap()
+    let master_key_hash = STANDARD.decode(encoded_master_key).unwrap();
+    let master_key = match pwmgr::verify_master_password(
+        &input_master_password, &master_key_hash) {
+
         Ok(key) => {
             key
         },
@@ -47,8 +64,6 @@ fn main() {
                 process::exit(1);
         },
     };
-
-    let args = Cli::parse();
 
     let mut cred_db = if let Some(raw_file_name) = args.raw_cred_file_name {
         println!("Raw Credentials file name: {:?}", raw_file_name);
@@ -80,6 +95,37 @@ fn main() {
 
     //Implement actions on the credential DB here
     match args.command {
+        Commands::SetMasterPassword {} => {
+            let new_password = rpassword::prompt_password(
+                "Enter new Master Password:").unwrap();
+            let reenter_password = rpassword::prompt_password(
+                "Re-enter new Master Password:").unwrap();
+            if new_password != reenter_password {
+                println!("Passwords do not match, exiting {}, {} !", 
+                    new_password, reenter_password);
+                process::exit(1);
+            }
+            let new_master_key = pwmgr::derive_master_key(&new_password);
+            let encoded_master_key = STANDARD.encode(&new_master_key);            
+
+            //Save the new master key to a file
+            //println!("SetMasterPassword: Saving new Master key: {:?}", new_master_key);
+            if let Err(error) = fs::write(args.master_key_hash_file_name, encoded_master_key) {
+                println!("Error writing master key to file: {}", error);
+                process::exit(1);
+            }
+
+            //Re-encrypt cred_db with the new master key
+            for (_site, site_users) in cred_db.iter_mut() {
+                for (_user, cred) in site_users.iter_mut() {
+                    let decrypted_pass = pwmgr::decrypt(&cred.password, &master_key).unwrap();
+                    let new_encrypted_pass = pwmgr::encrypt(&decrypted_pass, &new_master_key);
+                    cred.password = new_encrypted_pass;
+                }
+            }
+            //master_key = new_master_key;
+        }
+
         Commands::List {} => {
             for (site, site_users) in cred_db.iter() {
                 println!("Site: {:?}", site);
@@ -91,6 +137,12 @@ fn main() {
         Commands::Add {site, user, username} => {
             let new_pass = 
                 rpassword::prompt_password("Enter Password:").unwrap();
+            let reentered_new_pass = 
+                rpassword::prompt_password( "Re-enter Password:").unwrap();
+            if new_pass != reentered_new_pass {
+                println!("Passwords do not match, exiting!");
+                process::exit(1);
+            }
             let new_encrypted_pass = pwmgr::encrypt(&new_pass, &master_key);
             if let Some(site_user) = cred_db.get_mut(&site) {
                 if site_user.contains_key(&user) {
@@ -139,6 +191,11 @@ fn main() {
                     site, user);
                     site_user.remove(&user);
                 }
+                if cred_db.get(&site).unwrap().is_empty() {
+                    println!(
+                        "No more Credentials exist for this Site - Removing site!" );
+                    cred_db.remove(&site);
+                }
             }
             else {
                 println!(
@@ -183,8 +240,14 @@ fn main() {
                     site, user);
 
                     let new_pass = rpassword::prompt_password(
-                    "Enter Password:").unwrap();
-
+                        "Enter Password:").unwrap();
+                    let reentered_new_pass = rpassword::prompt_password(
+                        "Re-enter Password:").unwrap();
+                    if new_pass != reentered_new_pass {
+                        println!("Passwords do not match, exiting!");
+                        process::exit(1);
+                    }
+                    
                     let new_encrypted_pass = 
                         pwmgr::encrypt(&new_pass, &master_key);
 

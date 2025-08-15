@@ -24,10 +24,6 @@ pub type SiteUser = HashMap<String, Credential>;
 ///Credential Store is a hashmap keyed by "site", and stores SiteUser as value
 pub type CredentialStore = HashMap<String, SiteUser>;
 
-static MASTER_KEY_HASH:&[u8] = 
-    &[3, 139, 131, 35, 192, 77, 168, 146, 77, 200, 237, 162, 233, 156, 155, 229, 
-      107, 73, 51, 62, 124, 219, 17, 125, 31, 129, 193, 84, 233, 121, 96, 241];
-
 /// Derives a 32-byte master key from the provided master password using SHA-256.
 ///
 /// # Arguments
@@ -39,16 +35,28 @@ static MASTER_KEY_HASH:&[u8] =
 /// OK(A 32-byte array suitable for use as an AES-256-GCM encryption key)
 /// Error("Invalid Master Password")
 ///
-pub fn derive_master_key(master_password:&str) -> Result<[u8; 32], &str> {
+pub fn derive_master_key(master_password:&str) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(master_password.as_bytes());
     let master_key = hasher.finalize().into();
-    //println!("Master key: {:?}", master_key);
-    if master_key == MASTER_KEY_HASH {
+    //println!("derive_master_key: Returning Master key: {:?}", master_key);
+    master_key
+}
+
+
+/// Verifies the master password against the stored master key hash.
+pub fn verify_master_password(
+        master_password: &str, 
+        master_key_hash: &[u8]) -> 
+        Result<[u8; 32], String> {
+    
+    let master_key = derive_master_key(master_password);
+    //if master_key == MASTER_KEY_HASH {
+    if master_key == master_key_hash {
         Ok(master_key)
     }
     else {
-        Err("Invalid Master Password")
+        Err("Invalid Master Password".to_string())
     }
 }
 
@@ -72,7 +80,6 @@ pub fn encrypt(data: &str, key: &[u8; 32]) -> String {
 
     //Perform base64 encoding
     let encoded_result = STANDARD.encode(&result);
-    println!("Encoded ciphertext {:?}", encoded_result);
     encoded_result
 }
 
@@ -158,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_derive_master_key_length() {
-        let key = derive_master_key("testpassword").unwrap_or([0u8; 32]);
+        let key = derive_master_key("testpassword");
         assert_eq!(key.len(), 32);
     }
 
