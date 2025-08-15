@@ -9,7 +9,7 @@ Here are the key features of PWMGR:
    - It uses AES-256-GCM encryption with random nonces for encrypting passwords.
    - It uses a master password (default: "pwmgr123"), 
      which should be changed before adding more credentials to manage. 
-     Credential passwords are encrypted using key derived from the password.
+     Credential passwords are encrypted using a key derived from the master password.
 
 ## Usage
 There are three data files:
@@ -46,7 +46,7 @@ Managing the Credential database:
      ```bash
      pwmgr -d data/cred_db.json -m data/pwmgr_master_hash list
      pwmgr -d data/cred_db.json -m data/pwmgr_master_hash add gmail self me@gmail 
-     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash get gmail self
+     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash retrieve gmail self
      pwmgr -d data/cred_db.json -m data/pwmgr_master_hash update gmail self me@gmail
      pwmgr -d data/cred_db.json -m data/pwmgr_master_hash delete gmail self
      pwmgr -d data/cred_db.json -m data/pwmgr_master_hash list-sites (future)
@@ -90,8 +90,12 @@ This structure ensures that credentials are organized hierarchically, making it 
 ## Dependencies
 - `aes-gcm`: For AES-256-GCM encryption.
 - `sha2`: For SHA-256 hashing.
-- `serde`: For serialization and deserialization.
+- `serde`: For serialization and deserialization of Rust structures.
+- `serde_json`: For JSON serialization and deserialization.
 - `rand`: For generating random nonces.
+- `clap`: For command-line argument parsing and CLI interface.
+- `rpassword`: For secure password input (hides password while typing).
+- `base64`: For base64 encoding and decoding.
 
 ## Contributing
 Contributions are welcome! Please submit a pull request or open an issue for any bugs or feature requests.

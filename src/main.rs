@@ -29,11 +29,11 @@ pub struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     SetMasterPassword {},
-    Add    {site: String, user: String, username: String},
-    Get    {site: String, user: String},
-    Update {site: String, user: String, username: String},
-    Delete {site: String, user: String},
-    List   {},
+    Add      {site: String, user: String, username: String},
+    Retrieve {site: String, user: String},
+    Update   {site: String, user: String, username: String},
+    Delete   {site: String, user: String},
+    List     {},
 }
 
 fn main() {
@@ -203,7 +203,7 @@ fn main() {
             }
         }
 
-        Commands::Get {site, user} => {
+        Commands::Retrieve {site, user} => {
             if let Some(site_user) = cred_db.get(&site) {
                 if let Some(cred) = site_user.get(&user) {
                     match pwmgr::decrypt(&cred.password, &master_key){
