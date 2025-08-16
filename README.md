@@ -30,7 +30,7 @@ Here are the key features of PWMGR:
    - **raw_credentials.dat**: 
      Example 'raw' credentials, used to build the initial credential database.
      If you have raw credentials stored in some text file, you can add them in 
-     this file, (space separated:<site> <user> <username> <plaintext-password>) , 
+     this file, (space separated: `<site> <user> <username> <plaintext-password>`) , 
      and use pwmgr with "-r" option to import them all into the credential database.
      ```bash
      pwmgr -r data/raw_credentials.dat -d data/cred_db.json -m data/pwmgr_master_hash list
