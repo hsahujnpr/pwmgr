@@ -12,7 +12,7 @@ Here are the key features of PWMGR:
      Credential passwords are encrypted using a key derived from the master password.
 
 ## Usage
-There are three data files:
+### There are three data files:
 ---------------------------
    - **data/cred_db.json**: 
      This is the credential database, stores the credentials in JSON format. 
@@ -30,27 +30,27 @@ There are three data files:
    - **raw_credentials.dat**: 
      Example 'raw' credentials, used to build the initial credential database.
      If you have raw credentials stored in some text file, you can add them in 
-     this file, in the same format, and use pwmgr with "-r" option to import 
-     them all into the credential database.
+     this file, (space separated:<site> <user> <username> <plaintext-password>) , 
+     and use pwmgr with "-r" option to import them all into the credential database.
      ```bash
      pwmgr -r data/raw_credentials.dat -d data/cred_db.json -m data/pwmgr_master_hash list
      ```
      Note that, this will overwrite the cred_db.json (not append to it). 
-     So, any raw credentials needs to be converted using the "-r" option first, 
+     So, any raw credentials needs to be imported using the "-r" option first, 
      before adding new ones into the database.
 
-Managing the Credential database:
+### Managing the Credential database:
 ---------------------------------
-   - Use command line options to manage the encrypted credentials as follows:
+   Use command line options to manage the encrypted credentials as follows:
    - Example:
      ```bash
-     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash list
-     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash add gmail self me@gmail 
-     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash retrieve gmail self
-     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash update gmail self me@gmail
-     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash delete gmail self
-     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash list-sites (future)
-     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash list-users site (future)
+     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash list # List everything
+     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash add gmail self me@gmail # Add a new credential
+     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash retrieve gmail self # Retrieve a credential
+     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash update gmail self me@gmail # Update password for a credential
+     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash delete gmail self # Delete a credential
+     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash list-sites (future) # List all sites
+     pwmgr -d data/cred_db.json -m data/pwmgr_master_hash list-users site (future) # List all users for a site
      ```
 
 ## Installation
