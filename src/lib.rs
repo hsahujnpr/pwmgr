@@ -137,7 +137,7 @@ pub fn print_password_cleartext(passwd: &str, duration: Duration)
 
     //Switch to raw mode
     terminal::enable_raw_mode()?;
-    execute!(stdout(), cursor::SavePosition).unwrap()?;
+    execute!(stdout(), cursor::SavePosition)?;
     print!("{:?}", passwd);
     stdout().flush()?;
 
@@ -155,7 +155,7 @@ pub fn print_password_cleartext(passwd: &str, duration: Duration)
             break;
         }
     }
-    execute!(stdout(), cursor::RestorePosition).unwrap()?;
+    execute!(stdout(), cursor::RestorePosition)?;
     execute!(stdout(), terminal::Clear(terminal::ClearType::FromCursorDown))?;
     stdout().flush()?;
 
