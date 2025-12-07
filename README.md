@@ -11,7 +11,7 @@ Here are the key features of PWMGR:
      which should be changed before adding more credentials to manage. 
      Credential passwords are encrypted using a key derived from the master password.
    - When retrieving a credential, it prints the clearext password on the screen, 
-     and then clears it after 15 seconds.
+     and then **when user presses a key, or after 15 secs**.
 
 ## Usage
 ### There are three data files:
