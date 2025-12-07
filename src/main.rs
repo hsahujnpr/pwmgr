@@ -34,6 +34,7 @@ enum Commands {
     Update   {site: String, user: String, username: String},
     Delete   {site: String, user: String},
     List     {},
+    Show     {site: String},
 }
 
 fn main() {
@@ -46,16 +47,24 @@ fn main() {
     let input_master_password = 
         rpassword::prompt_password("Enter Master Password:").unwrap();
 
-    let encoded_master_key = fs::read_to_string(
-        &args.master_key_hash_file_name).unwrap();
+    let encoded_master_key = match fs::read_to_string(
+        &args.master_key_hash_file_name) {
+        Ok(master_key) => master_key,
+        Err(err) => {
+            println!("Master key hash file not found ({})", err);
+            process::exit(1);
+        }
+    };
 
-    //println!("Read master key hash: {}", encoded_master_key);
-
-    //TODO Handle error instead of unwrap()
-    let master_key_hash = STANDARD.decode(encoded_master_key).unwrap();
+    let master_key_hash = match STANDARD.decode(encoded_master_key) {
+        Ok(master_key_hash) => master_key_hash,
+        Err(err) => {
+            println!("Invalid master key hash {}", err);
+            process::exit(1);
+        }
+    };
     let master_key = match pwmgr::verify_master_password(
         &input_master_password, &master_key_hash) {
-
         Ok(key) => {
             key
         },
@@ -81,11 +90,17 @@ fn main() {
         //Load the cred_db hashmap from args.db_file_name
         let db = match fs::read_to_string(&args.db_file_name) {
             Ok(db_file_content) => {
-                let db = serde_json::from_str(&db_file_content).unwrap();
+                let db = match serde_json::from_str(&db_file_content) {
+                    Err(err) => {
+                        println!("Could not serialize Credential DB ({})", err);
+                        process::exit(1);
+                    },
+                    Ok(db) => db
+                };
                 db
             },
             Err(error) => {
-                println!("File Error: {error}, creating new Hashmap");
+                println!("Credential file does not exist:{error}, creating new Hashmap");
                 let db:pwmgr::CredentialStore = HashMap::new();
                 db
             },
@@ -108,9 +123,9 @@ fn main() {
             let new_master_key = pwmgr::derive_master_key(&new_password);
             let encoded_master_key = STANDARD.encode(&new_master_key);            
 
-            //Save the new master key to a file
-            //println!("SetMasterPassword: Saving new Master key: {:?}", new_master_key);
-            if let Err(error) = fs::write(args.master_key_hash_file_name, encoded_master_key) {
+            if let Err(error) = 
+                fs::write( args.master_key_hash_file_name, encoded_master_key) {
+
                 println!("Error writing master key to file: {}", error);
                 process::exit(1);
             }
@@ -118,22 +133,64 @@ fn main() {
             //Re-encrypt cred_db with the new master key
             for (_site, site_users) in cred_db.iter_mut() {
                 for (_user, cred) in site_users.iter_mut() {
-                    let decrypted_pass = pwmgr::decrypt(&cred.password, &master_key).unwrap();
-                    let new_encrypted_pass = pwmgr::encrypt(&decrypted_pass, &new_master_key);
+                    //Decrypt the existing password
+                    let decrypted_pass = 
+                        match pwmgr::decrypt(&cred.password, &master_key){
+
+                        Ok(decrypted_pass) => decrypted_pass,
+                        Err(error) => {
+                            let err_msg = format!(
+                                "Error decrypting password {} skipping user: {}, site: {}", 
+                                error, _user, _site);
+                            println!("{}", err_msg);
+                            continue;
+                        }
+                    };
+
+                    //Re-encrypt with new master password
+                    let new_encrypted_pass = 
+                        match pwmgr::encrypt(&decrypted_pass, &new_master_key) {
+
+                        Ok(encrypted_pass) => encrypted_pass,
+                        Err(error) => {
+                            let err_msg = format!(
+                                "Error re-encrypting password {} skipping user: {}, site: {}", 
+                                error, _user, _site);
+                            println!("{}", err_msg);
+                            continue;
+                        }
+                    };
                     cred.password = new_encrypted_pass;
                 }
             }
-            //master_key = new_master_key;
         }
 
         Commands::List {} => {
             for (site, site_users) in cred_db.iter() {
                 println!("Site: {:?}", site);
                 for (user, cred) in site_users.iter() {
-                    println!("    User: {:?} Credentials: {:?}", user, cred);
+                    let formatted_cred = 
+                        format!("\n\t  username: {} \n\t  password: {}",
+                        cred.username, cred.password);
+                    println!("\tUser: {} \n\tCredentials: {}\n", 
+                        user, formatted_cred);
                 }
             }
         }
+
+        Commands::Show {site} => {
+            if let Some(site_user) = cred_db.get(&site) {
+                println!("Site: {:?}", site);
+                for (user, cred) in site_user.iter() {
+                    let formatted_cred = 
+                        format!("\n\t  username: {} \n\t  password: {}",
+                        cred.username, cred.password);
+                    println!("\tUser: {} \n\tCredentials: {}\n", 
+                        user, formatted_cred);
+                }
+            }
+        }
+
         Commands::Add {site, user, username} => {
             let new_pass = 
                 rpassword::prompt_password("Enter Password:").unwrap();
@@ -143,7 +200,16 @@ fn main() {
                 println!("Passwords do not match, exiting!");
                 process::exit(1);
             }
-            let new_encrypted_pass = pwmgr::encrypt(&new_pass, &master_key);
+            let new_encrypted_pass = 
+                match pwmgr::encrypt(&new_pass, &master_key) {
+
+                Ok(encrypted_pass) => encrypted_pass,
+                Err(error) => {
+                    let err_msg = format!("Error encrypting password {}",error);
+                    println!("{}", err_msg);
+                    process::exit(1);
+                }
+            };
             if let Some(site_user) = cred_db.get_mut(&site) {
                 if site_user.contains_key(&user) {
                     println!(
@@ -191,7 +257,8 @@ fn main() {
                     site, user);
                     site_user.remove(&user);
                 }
-                if cred_db.get(&site).unwrap().is_empty() {
+                //if cred_db.get(&site).unwrap().is_empty() {
+                if site_user.is_empty() {
                     println!(
                         "No more Credentials exist for this Site - Removing site!" );
                     cred_db.remove(&site);
@@ -208,12 +275,13 @@ fn main() {
                 if let Some(cred) = site_user.get(&user) {
                     match pwmgr::decrypt(&cred.password, &master_key){
                         Ok(plaintext) => {
-                            println!(
-                            "Credentials for Site: {:?} User: {:?}: 
-                            username: {:?}, Password: {:?}", 
-                            site, user, cred.username, plaintext);
-
-                            plaintext
+                            println!( "Credentials for Site: {:?} User: {:?}", site, user);
+                            print!("                username: {:?} password: ", cred.username);
+                            let duration = std::time::Duration::from_secs(15);
+                            let _ = pwmgr::print_password_cleartext(
+                                &plaintext,duration)
+                                .map_err(|e| format!("Display failed: {}", e));
+                            println!();
                         },
                         Err(err_msg) => {
                             println!("{}", err_msg);
@@ -249,12 +317,21 @@ fn main() {
                     }
                     
                     let new_encrypted_pass = 
-                        pwmgr::encrypt(&new_pass, &master_key);
-
+                            match pwmgr::encrypt(&new_pass, &master_key) {
+                        Ok(encrypted_pass) => encrypted_pass,
+                        Err(error) => {
+                            let err_msg = 
+                                format!("Error encrypting password {}", error);
+                            println!("{}", err_msg);
+                            process::exit(1);
+                        }
+                    };
                     site_user.insert(
-                        user, 
-                        Credential{
-                            username:username, password:new_encrypted_pass}
+                        user,
+                        Credential {
+                            username: username,
+                            password: new_encrypted_pass,
+                        },
                     );
                 }
                 else {

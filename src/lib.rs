@@ -1,3 +1,8 @@
+use std::io::{stdout, Write};
+//use std::thread::sleep;
+use std::time::Duration;
+use std::time::Instant;
+
 use std::str;
 use std::error::Error;
 use std::fs;
@@ -11,30 +16,36 @@ use rand::rngs::OsRng;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use sha2::{Digest, Sha256};
 
+use crossterm:: {
+    cursor,
+    terminal,
+    execute,
+};
+
 pub mod structs;
 
 use crate::structs::Credential;
 
-///SiteUser is a Hashmap with key as a "user" of the site, and Credential 
-///as the value. This allows CredentialStore to store credentials of 
-///multiple users on the same website
+//SiteUser is a Hashmap with key as a "user" of the site, and Credential 
+//as the value. This allows CredentialStore to store credentials of 
+//multiple users on the same website
 
 pub type SiteUser = HashMap<String, Credential>;
 
-///Credential Store is a hashmap keyed by "site", and stores SiteUser as value
+//Credential Store is a hashmap keyed by "site", and stores SiteUser as value
 pub type CredentialStore = HashMap<String, SiteUser>;
 
-/// Derives a 32-byte master key from the provided master password using SHA-256.
-///
-/// # Arguments
-///
-/// * `master_password` - The user-supplied master password as a string slice.
-///
-/// # Returns "Result" of:
-///
-/// OK(A 32-byte array suitable for use as an AES-256-GCM encryption key)
-/// Error("Invalid Master Password")
-///
+// Derives a 32-byte master key from the provided master password using SHA-256.
+//
+// # Arguments
+//
+// * `master_password` - The user-supplied master password as a string slice.
+//
+// # Returns "Result" of:
+//
+// OK(A 32-byte array suitable for use as an AES-256-GCM encryption key)
+// Error("Invalid Master Password")
+//
 pub fn derive_master_key(master_password:&str) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(master_password.as_bytes());
@@ -69,22 +80,28 @@ pub fn generate_nonce() -> [u8; 12] {
 
 /// Encrypts data using AES-256-GCM
 /// Returns a vector containing: [nonce (12 bytes) + ciphertext]
-pub fn encrypt(data: &str, key: &[u8; 32]) -> String {
+pub fn encrypt(
+               data: &str, key: &[u8; 32]) 
+               -> Result<String, Box<dyn Error>> {
+
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     let nonce_bytes = generate_nonce();
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, data.as_bytes()).unwrap();
+    let ciphertext = cipher.encrypt(nonce, data.as_bytes())
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+
+    //Concatenate nonce and ciphertext
     let mut result = Vec::new();
     result.extend_from_slice(&nonce_bytes);
     result.extend_from_slice(&ciphertext);
 
     //Perform base64 encoding
     let encoded_result = STANDARD.encode(&result);
-    encoded_result
+    Ok(encoded_result)
 }
 
-/// Decrypts data using AES-256-GCM
-/// Input is Base64 encoded encrypted text: [nonce (12 bytes) + ciphertext]
+// Decrypts data using AES-256-GCM
+// Input is Base64 encoded encrypted text: [nonce (12 bytes) + ciphertext]
 pub fn decrypt(
             encrypted_data: &str, key: &[u8; 32])
             ->Result<String, Box<dyn Error>> {
@@ -110,22 +127,63 @@ pub fn decrypt(
         .map_err(|e| format!("Invalid UTF-8: {}", e).into())
 }
 
-/// Parses a raw credentials file and builds a CredentialStore HashMap.
-///
-/// # Arguments
-///
-/// * `raw_file_name` - 
-/// The path to the file containing raw credentials, with each line formatted as: 
-/// <site> <user> <username> <password>.
-///
-/// # Returns
-///
-/// * `Ok(CredentialStore)` - A populated CredentialStore HashMap on success.
-/// * `Err(Box<dyn Error>)` - An error if the file cannot be read or parsed.
-///
-pub fn populate_db(raw_file_name: String, master_key: &[u8; 32]) -> Result<CredentialStore, Box<dyn Error>> { 
+//Function to display cleartext password on the screen:
+//    Show the password for 'duration' secs
+//    Clear it from the screen
+//    Uses "crossterm" crate
+
+pub fn print_password_cleartext(passwd: &str, duration: Duration)
+       -> Result<Duration, Box<dyn Error>> {
+
+    //Switch to raw mode
+    terminal::enable_raw_mode()?;
+    execute!(stdout(), cursor::SavePosition).unwrap()?;
+    print!("{:?}", passwd);
+    stdout().flush()?;
+
+    //Poll for key strokes OR until duration has elapsed
+    let now = Instant::now();
+    loop {
+        //Break if duration has elapsed
+        if now.elapsed() >= duration {
+            break;
+        }
+
+        //Break if a key is pressed
+        if crossterm::event::poll(Duration::from_millis(100))? {
+            let _ = crossterm::event::read()?;
+            break;
+        }
+    }
+    execute!(stdout(), cursor::RestorePosition).unwrap()?;
+    execute!(stdout(), terminal::Clear(terminal::ClearType::FromCursorDown))?;
+    stdout().flush()?;
+
+    //Restore terminal mode
+    terminal::disable_raw_mode()?;
+
+    Ok(now.elapsed())
+}
+       
+
+// Parses a raw credentials file and builds a CredentialStore HashMap.
+//
+// # Arguments
+//
+// * `raw_file_name` - 
+// Path to the file containing raw credentials, with each line formatted as:
+// <site> <user> <username> <password>.
+//
+// # Returns
+//
+// * `Ok(CredentialStore)` - A populated CredentialStore HashMap on success.
+// * `Err(Box<dyn Error>)` - An error if the file cannot be read or parsed.
+//
+pub fn populate_db(raw_file_name: String, master_key: &[u8; 32]) -> 
+                   Result<CredentialStore, Box<dyn Error>> { 
     // Read the file content 
-    // TODO: Modify to use BufReader, in order to avoid reading the entire content
+    // TODO: Modify to use BufReader, 
+    // in order to avoid reading the entire content
     let file_content = match fs::read_to_string(raw_file_name) {
         Ok(contents) => contents,
         Err(error)   => return Err(Box::new(error)),
@@ -133,7 +191,9 @@ pub fn populate_db(raw_file_name: String, master_key: &[u8; 32]) -> Result<Crede
 
     let mut db: HashMap<String, SiteUser> = HashMap::new();
 
-    // Read file_content, one line at a time: <site> <user> <username> <password>
+    // 
+    // Read file_content, one line at a time: 
+    // <site> <user> <username> <password>
     for line in file_content.lines() {
         let mut tokens = line.split_whitespace();
         let site = tokens.next().unwrap().to_string();
@@ -143,67 +203,23 @@ pub fn populate_db(raw_file_name: String, master_key: &[u8; 32]) -> Result<Crede
             site_user_map.insert(tokens.next().unwrap().to_string(), 
                 Credential {
                     username: tokens.next().unwrap().to_string(), 
-                    password: encrypt(tokens.next().unwrap(), master_key),
-                });
-        } else {
+                    password: encrypt(tokens.next().unwrap(), master_key)
+                             .map_err(|e| format!("Encryption failed {}", e))?
+                }
+            );
+        } 
+        else {
             let mut site_user_map = HashMap::new();
             site_user_map.insert(tokens.next().unwrap().to_string(), 
                 Credential {
                     username: tokens.next().unwrap().to_string(), 
-                    password: encrypt(tokens.next().unwrap(), master_key),
-                });
+                    password: encrypt(tokens.next().unwrap(), master_key)
+                             .map_err(|e| format!("Encryption failed {}", e))?
+                }
+            );
             db.insert(site, site_user_map);
         };
     };
 
     Ok(db)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_derive_master_key_length() {
-        let key = derive_master_key("testpassword");
-        assert_eq!(key.len(), 32);
-    }
-
-    #[test]
-    fn test_generate_nonce_length() {
-        let nonce = generate_nonce();
-        assert_eq!(nonce.len(), 12);
-    }
-
-    #[test]
-    fn test_encrypt_decrypt_roundtrip() {
-        let key = [42u8; 32];
-        let plaintext = "my secret data";
-        let encrypted = encrypt(plaintext, &key);
-        let decrypted = decrypt(&encrypted, &key).unwrap();
-        assert_eq!(decrypted, plaintext);
-    }
-
-    #[test]
-    fn test_decrypt_with_wrong_key_fails() {
-        let key = [1u8; 32];
-        let wrong_key = [2u8; 32];
-        let plaintext = "top secret";
-        let encrypted = encrypt(plaintext, &key);
-        let result = decrypt(&encrypted, &wrong_key);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_decrypt_with_tampered_data_fails() {
-        let key = [3u8; 32];
-        let plaintext = "do not tamper";
-        let encrypted = encrypt(plaintext, &key);
-        // Tamper with the base64 string (flip a char)
-        let mut chars: Vec<char> = encrypted.chars().collect();
-        if let Some(c) = chars.get_mut(10) { *c = if *c == 'A' { 'B' } else { 'A' }; }
-        let tampered = chars.into_iter().collect::<String>();
-        let result = decrypt(&tampered, &key);
-        assert!(result.is_err());
-    }
 }

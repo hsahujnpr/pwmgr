@@ -5,6 +5,7 @@
 # IDE/Editor files
 .vscode/
 .idea/
+.DS_Store
 
 # Logs and temporary files
 *.log
